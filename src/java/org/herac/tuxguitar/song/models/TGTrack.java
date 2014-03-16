@@ -27,8 +27,8 @@ public abstract class TGTrack {
 	private boolean solo;
 	private boolean mute;
 	private String name;
-	private List measures;
-	private List strings;
+	private List<TGMeasure> measures;
+	private List<TGString> strings;
 	private TGColor color;
 	private TGLyric lyrics;
 	private TGSong song;
@@ -83,11 +83,11 @@ public abstract class TGTrack {
 		return this.measures.size();
 	}
 	
-	public List getStrings() {
+	public List<TGString> getStrings() {
 		return this.strings;
 	}
 	
-	public void setStrings(List strings) {
+	public void setStrings(List<TGString> strings) {
 		this.strings = strings;
 	}
 	

@@ -14,7 +14,7 @@ public class GString extends TGString {
 
 	@Override
 	public String toString() {
-		return "GString [number()=" + getNumber() + ", value()="
+		return "GString [number=" + getNumber() + ", value="
 				+ getValue() + "]";
 	}
 

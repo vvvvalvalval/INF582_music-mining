@@ -24,14 +24,14 @@ public abstract class TGVoice {
 	
 	private TGBeat beat;
 	private TGDuration duration;
-	private List notes;
+	private List<TGNote> notes;
 	private int index;
 	private int direction;
 	private boolean empty;
 	
 	public TGVoice(TGFactory factory, int index) {
 		this.duration = factory.newDuration();
-		this.notes = new ArrayList();
+		this.notes = new ArrayList<TGNote>();
 		this.index = index;
 		this.empty = true;
 		this.direction = DIRECTION_NONE;
@@ -77,7 +77,7 @@ public abstract class TGVoice {
 		this.beat = beat;
 	}
 
-	public List getNotes() {
+	public List<TGNote> getNotes() {
 		return this.notes;
 	}
 	
