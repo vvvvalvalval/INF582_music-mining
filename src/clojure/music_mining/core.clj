@@ -16,6 +16,7 @@
                                                     Voice)
            (org.herac.tuxguitar.io.tg TGInputStream)
            (org.herac.tuxguitar.song.models TGBeat
+                                            TGDivisionType
                                             TGDuration
                                             TGMeasure
                                             TGNote
@@ -31,7 +32,8 @@
   (:require [clojure.java.io :as cio]
             )
   (:use clojure.repl
-        clojure.pprint)
+        clojure.pprint
+        music-mining.utils)
   )
 
 (defn resource-as-stream 
@@ -105,10 +107,13 @@
   "Converts a TGDuration to a rational number, where the duration of a quarter note is 1."
   [^TGDuration tg-duration]
   (*
-    (/ 4 (. tg-duration getValue))
-    (if (. tg-duration isDotted)
+    (/ 4 (. tg-duration getValue)) ; a 4th has value 4
+    (if (. tg-duration isDotted) ; acconting for dots
       3/2
-      (if (. tg-duration isDoubleDotted) 7/4 1))))
+      (if (. tg-duration isDoubleDotted) 7/4 1))
+    (let [^TGDivisionType division-type (. tg-duration getDivision)] ; accounting for division type
+      (/ (. division-type getTimes) (. division-type getEnters)))
+    ))
 
 (def reference-pitch-value 
   "The TuxGuitar value of the origin pitch."
@@ -131,11 +136,11 @@
               (quot (. (last points) getValue) 2)))
           0)
         (if tremolo-bar-effect ; adding any tremolo bar effect, the final value is used
-          (let [points (. bend-effect getPoints)]
-            (if (empty? points)
-              0
-              (quot (. (last points) getValue) 2)))
-          0)
+        (let [points (. tremolo-bar-effect getPoints)]
+          (if (empty? points)
+            0
+            (quot (. (last points) getValue) 2)))
+        0)
         (- reference-pitch-value) ; substracting the reference pitch.
         )))
 
@@ -150,29 +155,30 @@
                                      notes-in-measure []]
                                 ;looping through each beat in the measure
                                 (if (empty? remaining-beats)
-                                  {:final-offset position,
-                                   :notes notes-in-measure}
-                                  (let [current-beat (first remaining-beats),
-                                        ;in Guitar Pro files parsed with TuxGuitar, only the first voice ever gets any note. YES, this is dirty.
-                                        voice (. current-beat (getVoice 0)),
-                                        duration (to-ratio-duration (. voice getDuration)),
-                                        pitches (map 
-                                                  (fn [^TGNote tg-note]
-                                                    ;we transform the TGNote into an integer-valued pitch
-                                                    (pitch-of-fretted-note
-                                                      (tgstring-with-number (. tg-note getString))
-                                                      tg-note))
-                                                  (. voice getNotes)) 
-                                        ]
-                                    (recur (rest remaining-beats)
-                                            (+ position duration)
-                                            (conj notes-in-measure (->NotesGroup position duration pitches)))))))]   
+                                    {:final-offset position,
+                                     :notes notes-in-measure}
+                                    (let [current-beat (first remaining-beats),
+                                          ;in Guitar Pro files parsed with TuxGuitar, only the first voice ever gets any note. YES, this is dirty.
+                                          voice (. current-beat (getVoice 0)),
+                                          duration (to-ratio-duration (. voice getDuration)),
+                                          pitches (vec (map 
+                                                         (fn [^TGNote tg-note]
+                                                           ;we transform the TGNote into an integer-valued pitch
+                                                           (pitch-of-fretted-note
+                                                             (tgstring-with-number (. tg-note getString))
+                                                             tg-note))
+                                                         (. voice getNotes))) 
+                                          ]
+                                      (recur (rest remaining-beats)
+                                              (+ position duration)
+                                              (conj notes-in-measure (->NotesGroup position duration pitches))))
+                                   )))]   
    (loop [remaining-measures measures
          position-offset 0
          notes []]
      ;looping through all measures
     (if (empty? remaining-measures)
-     (filter (fn [^NotesGroup notes-group] (not-empty (:pitches notes-group))) notes)
+       (filter (fn [^NotesGroup notes-group] (not-empty (:pitches notes-group))) notes)
      (let [current-measure (first remaining-measures)
            {new-offset :final-offset,
             notes-in-measure :notes} (find-notes-in-measure current-measure position-offset)]
