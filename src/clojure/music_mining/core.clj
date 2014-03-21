@@ -19,10 +19,13 @@
                                             TGDuration
                                             TGMeasure
                                             TGNote
+                                            TGNoteEffect
                                             TGSong
                                             TGString
                                             TGVoice
                                             TGTrack)
+           (org.herac.tuxguitar.song.models.effects TGEffectBend
+                                                    TGEffectTremoloBar)
            (org.herac.tuxguitar.song.factory TGFactory)
            )
   (:require [clojure.java.io :as cio]
@@ -40,6 +43,7 @@
 (def settings (GTPSettings.))
 ; the factory that is used to create songs and other TG models. Overriden to have more readable objets.
 (def tg-factory 
+  "A special TGFactory implementation that lets us define our own types for constructing TGSong, notably with enhanced toString method."
   (proxy [TGFactory] []
     (newBeat [] (Beat. tg-factory))
     (newDuration [] (Duration. tg-factory))
@@ -75,12 +79,16 @@
 (def drums (read-song (resource-as-stream "drums.gp4") :gp4))
 (def several-instruments (read-song (resource-as-stream "several_instruments.gp4") :gp4))
 (def two-voices (read-song (resource-as-stream "2_voices.gp4") :gp4))
+(def smoke-water (read-song (resource-as-stream "smoke_on_the_water.gp3") :gp3))
+(def 
+  bend (read-song (resource-as-stream "bend.gp4") :gp4))
 (def all-samples [chello 
                   rhapsody 
                   au-clair-de-la-lune 
                   drums 
                   several-instruments
-                  two-voices])
+                  two-voices
+                  smoke-water])
 
 (defn percussion-track?
   "Whether a track is a percussion track"
@@ -109,8 +117,27 @@
 (defn ^long pitch-of-fretted-note
   "Computes a pitch from a TGString and a fret number."
   [^TGString tg-string
-   ^long fret-number]
-  (+ (.getValue tg-string) fret-number (- reference-pitch-value)))
+   ^TGNote note]
+  (let [fret-number (. note getValue)
+        ^TGNoteEffect effects (. note getEffect)
+        ^TGEffectBend bend-effect (. effects getBend)
+        ^TGEffectTremoloBar tremolo-bar-effect (. effects getTremoloBar)]
+    (+  (. tg-string getValue) ; the pitch of the open string
+        fret-number ; the number of the fret
+        (if bend-effect ; adding any bend effect, the final value is used
+          (let [points (. bend-effect getPoints)]
+            (if (empty? points)
+              0
+              (quot (. (last points) getValue) 2)))
+          0)
+        (if tremolo-bar-effect ; adding any tremolo bar effect, the final value is used
+          (let [points (. bend-effect getPoints)]
+            (if (empty? points)
+              0
+              (quot (. (last points) getValue) 2)))
+          0)
+        (- reference-pitch-value) ; substracting the reference pitch.
+        )))
 
 (defn notes-of-track
  "Transform a TGTrack into a sequence of NoteGroups." 
@@ -134,7 +161,7 @@
                                                     ;we transform the TGNote into an integer-valued pitch
                                                     (pitch-of-fretted-note
                                                       (tgstring-with-number (. tg-note getString))
-                                                      (. tg-note getValue)))
+                                                      tg-note))
                                                   (. voice getNotes)) 
                                         ]
                                     (recur (rest remaining-beats)
@@ -157,8 +184,12 @@
   [^TGSong song]
   "
 Reads a song as a list of independent sequences of NoteGroups, one such sequence for each track.
-The percussion track will not be accounted for, nor silent notes."
-  (vec (map notes-of-track (filter (comp not percussion-track?) (iterator-seq (. song getTracks))))))
+The percussion track will not be accounted for, nor silent notes.
+Note that the song is no longer partitioned in measures."
+  (vec (map (fn [^TGTrack track]
+              {:track-name (. track getName)
+               :notes (notes-of-track track)})
+            (filter (comp not percussion-track?) (iterator-seq (. song getTracks))))))
         
 (defn pprint-song
   [^TGSong song]

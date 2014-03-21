@@ -40,8 +40,8 @@ public abstract class TGTrack {
 		this.solo = false;
 		this.mute = false;
 		this.name = new String();
-		this.measures = new ArrayList();
-		this.strings = new ArrayList();
+		this.measures = new ArrayList<TGMeasure>();
+		this.strings = new ArrayList<TGString>();
 		this.color = factory.newColor();
 		this.lyrics = factory.newLyric();
 	}
@@ -54,7 +54,7 @@ public abstract class TGTrack {
 		this.number = number;
 	}
 	
-	public Iterator getMeasures() {
+	public Iterator<TGMeasure> getMeasures() {
 		return this.measures.iterator();
 	}
 	

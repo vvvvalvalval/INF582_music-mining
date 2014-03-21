@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.List;
 
 import org.herac.tuxguitar.song.factory.TGFactory;
+import org.herac.tuxguitar.song.models.TGMeasure;
 import org.herac.tuxguitar.song.models.TGTrack;
 
 public class Track extends TGTrack {
@@ -12,7 +13,7 @@ public class Track extends TGTrack {
 		super(factory);
 	}
 
-	public List<TGTrack> measures(){
+	public List<TGMeasure> measures(){
 		return Util.listFromIterator(this.getMeasures());
 	}
 	
