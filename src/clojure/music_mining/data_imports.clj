@@ -199,7 +199,7 @@ Note with bend or tremolo bar effects have a simplified treatment : the final pi
            {new-offset :final-offset,
             notes-in-measure :notes} (find-notes-in-measure current-measure position-offset)]
        (recur (rest remaining-measures)
-               new-offset
+               (long new-offset)
                (concat notes notes-in-measure)))))))
 
 (defn notes-of-song
@@ -277,7 +277,7 @@ Note that the song is no longer partitioned in measures."
   [^TgSong&File song-and-file]
   (if (nil? song-and-file)
     nil            
-    (let [{^TGSong tg-song :tg-song, file :file} song-and-file
+    (let [{^TGSong tg-song :tg-song, ^File file :file} song-and-file
           name (. tg-song getName)
           artist (. file getParent)
           content (notes-of-song tg-song)]
