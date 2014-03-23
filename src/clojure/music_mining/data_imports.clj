@@ -91,23 +91,7 @@
     )
   )
 
-;some sample songs
-(def chello (read-song (resource-as-stream "sample-gp3.gp3") :gp3))
-(def rhapsody (read-song (resource-as-stream "rhapsody.gp4") :gp4))
-(def au-clair-de-la-lune (read-song (resource-as-stream "au_clair_de_la_lune.gp4") :gp4))
-(def drums (read-song (resource-as-stream "drums.gp4") :gp4))
-(def several-instruments (read-song (resource-as-stream "several_instruments.gp4") :gp4))
-(def two-voices (read-song (resource-as-stream "2_voices.gp4") :gp4))
-(def smoke-water (read-song (resource-as-stream "smoke_on_the_water.gp3") :gp3))
-(def bend (read-song (resource-as-stream "bend.gp4") :gp4))
-(def all-samples [bend
-                  chello 
-                  rhapsody 
-                  au-clair-de-la-lune 
-                  drums 
-                  several-instruments
-                  two-voices
-                  smoke-water])
+
 
 (defn- percussion-track?
   "Whether a track is a percussion track"
@@ -213,9 +197,6 @@ Note that the song is no longer partitioned in measures."
                :notes (notes-of-track track)})
             (filter (comp not percussion-track?) (iterator-seq (. song getTracks))))))
         
-(defn pprint-song
-  [^TGSong song]
-  (pprint (notes-of-song song)))
 
 (def supported-formats #{:gp1 :gp2 :gp3 :gp4 :gp5})
 (def format-to-extension {:gp1 "gtp",
@@ -293,7 +274,33 @@ Note that the song is no longer partitioned in measures."
 (def fetch-all-songs #(filter not-nil? (map (comp to-nice-song-safe to-tg-song-safe to-FileAndFormat) (all-gp-files-seq))))
 (def fetch-a-few-songs #(filter not-nil? (map (comp to-nice-song-safe to-tg-song-safe to-FileAndFormat) (some-gp-files-seq))))
 
-        
+(defn ^NiceSong read-NiceSong-from-resource
+  [file-name artist]
+  (->NiceSong (FilenameUtils/getBaseName file-name)
+              artist
+              (notes-of-song (read-song (resource-as-stream file-name)
+                                        (extension-to-format (FilenameUtils/getExtension file-name))))))
+              
+  
+  
+
+;some sample songs
+(def chello (read-NiceSong-from-resource "sample-gp3.gp3" "Bach"))
+(def rhapsody (read-NiceSong-from-resource "rhapsody.gp4" "Queen"))
+(def au-clair-de-la-lune (read-NiceSong-from-resource "au_clair_de_la_lune.gp4" "Unknown"))
+(def drums (read-NiceSong-from-resource "drums.gp4" "Val"))
+(def several-instruments (read-NiceSong-from-resource "several_instruments.gp4" "Val"))
+(def two-voices (read-NiceSong-from-resource "2_voices.gp4" "Val"))
+(def smoke-water (read-NiceSong-from-resource "smoke_on_the_water.gp3" "Deep Purple"))
+(def bend (read-NiceSong-from-resource "bend.gp4" "Val"))
+(def all-samples [bend
+                  chello 
+                  rhapsody 
+                  au-clair-de-la-lune 
+                  drums 
+                  several-instruments
+                  two-voices
+                  smoke-water])        
         
 
         

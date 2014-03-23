@@ -36,5 +36,29 @@
         (swap! count inc)
         (when (= 0 (rem @count leap))
           (println "I have processed " @count " items so far"))))))
+
+
+(defn sum 
+  "Sums a sequence"
+  [coll]
+  (loop [remaining coll
+         res 0]
+    (if (empty? remaining)
+      res
+      (recur (rest remaining)
+             (+ (first remaining) res)))))
+
+
+(defn transform-map
+  "Transforms a map into another map by applying the specified function to all values."
+  [f mp]
+  (loop [remaining-keys (keys mp)
+         res {}]
+    (if (empty? remaining-keys)
+      res
+      (recur (rest remaining-keys)
+             (let [key (first remaining-keys)
+                   new-value (f (mp key))]
+               (assoc res key new-value))))))
       
     
