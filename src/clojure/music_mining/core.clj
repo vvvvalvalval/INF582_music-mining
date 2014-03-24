@@ -36,6 +36,13 @@
   (let [old-value (value-at-note m-vector pitch)]
     (assoc-note m-vector pitch (+ old-value value))))
         
+(defn extract-distributions-per-track-and-merge
+  "Defines a function that extracts a distribution from a song by extracting a distribution on the notes of each of its tracks, and summing the results."
+  [extract-from-track-notes]
+  (fn [^NiceSong song]
+    (let [notes-of-tracks-seq (map :notes (:content song))]
+      (reduce +distributions
+              (map extract-from-track-notes notes-of-tracks-seq)))))
 
 (defn total-time-per-pitch
   "Computes a map of the total duration that is spent playing each pitch.
@@ -177,35 +184,50 @@ Useful for having a 'harmonic distribution' of a song."
 
 (defn to-height-zone-distibution
   [pitch-time-distrib]
-  (image-distribution height-zone pitch-time-distrib))                    
+  (image-distribution height-zone pitch-time-distrib))
 
-(defn extract-distributions-per-track-and-merge
-  [extract-from-track-notes]
-  (fn [^NiceSong song]
-    (let [notes-of-tracks-seq (map :notes (:content song))]
-      (reduce +distributions
-              (map extract-from-track-notes notes-of-tracks-seq)))))
-
-(defn extract-rythm-steps-distribution
-  "Extracts from a song the distribution of steps, that is the duration between successive notes.
-Returns a normalized distribution so the most frequent step has duration 1."
-  [^NiceSong song]
-  (let [to-steps-seq (fn self [notesGroups-seq]
+(let [to-steps-seq (fn self [notesGroups-seq]
                        (let [[{pos1 :position} {pos2 :position} & _] notesGroups-seq]
                          (if (nil? pos2)
                            ()
                            (lazy-seq
                              (cons (- pos2 pos1) (self (rest notesGroups-seq)))))))
-        notes-of-tracks-seq (map :notes (:content song))
-        unnormalized-distrib (reduce +distributions
-                                     (map (comp aggregate-into-distribution to-steps-seq) notes-of-tracks-seq))
-        {most-frequent-step :point} (maximal-point-info unnormalized-distrib)]
-    (if (nil? most-frequent-step)
-      {} ;there is no step!
-      (image-distribution #(/ % most-frequent-step) ;normalizing 
-                          unnormalized-distrib))))
+      extract-from-track-notes (comp aggregate-into-distribution to-steps-seq)
+      extract-unnormalized (extract-distributions-per-track-and-merge extract-from-track-notes)
+      normalize (fn [unnormalized-distrib]
+                  (let [{most-frequent-step :point} (maximal-point-info unnormalized-distrib)]
+                    (if (nil? most-frequent-step)
+                      {} ;there is no step!
+                      (image-distribution #(/ % most-frequent-step) ;normalizing 
+                                          unnormalized-distrib))))]
+  
+  (defn rhythm-steps-distribution-of-song
+    "Extracts from a song the distribution of steps, that is the duration between successive notes.
+Returns a normalized distribution so the most frequent step has duration 1."
+    [^NiceSong song]
+    (->> song extract-unnormalized normalize)))
       
-    
+(let [noteGroup-to-interval (fn [{pitches :pitches}]
+                              (let [sorted-pitches (sort pitches)
+                                    min-pitch (first sorted-pitches)]
+                                (->> pitches (map #(- % min-pitch)) rest vec)))
+      
+      polyphonic? (fn [{pitches :pitches}] (> (count pitches) 1))
+      extract-from-track-notes (fn [track-notes] (->> track-notes 
+                                                   (filter polyphonic?)
+                                                   (aggregate-into-distribution (fn [noteGroup]
+                                                                                  {:point (noteGroup-to-interval noteGroup)
+                                                                                   :weight (:duration noteGroup)}))))]
+  
+  (def intervals-distributions-of-song
+    " [song]
+Extracts from a song the distribution of intervals"
+    (extract-distributions-per-track-and-merge extract-from-track-notes)))
+      
+(defrecord 
+
+                                                                                
+                                                   
     
         
         
