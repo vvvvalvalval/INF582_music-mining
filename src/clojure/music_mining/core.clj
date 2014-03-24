@@ -1,11 +1,14 @@
 (ns music-mining.core
   (:require [music-mining.data-imports :as di]
+            [music-mining.distributions]
             [clojure.contrib.math :as math]
             clojure.set)
-  (:import [music_mining.data_imports NiceSong NotesGroup])
+  (:import [music_mining.data_imports NiceSong NotesGroup]
+           [music_mining.distributions WeightedPoint])
   (:use [clojure.repl]
         [clojure.pprint]
         [music-mining.utils]
+        [music-mining.distributions]
         [music-mining.data-imports :only [chello rhapsody smoke-water au-clair-de-la-lune several-instruments
                                           reference-pitch-value]]))
 
@@ -73,10 +76,6 @@ Useful for having a 'harmonic distribution' of a song."
   (comp normalize-distribution-map total-time-per-pitch))
 
 (def scale-notes-seq (range 0 12))
-
-(def zero-distribution 
-  "A distribution with only zero values."
-  {})
              
 (def literal-note-of-scale-note {0 :C,
                                  1 :C#,
@@ -91,17 +90,6 @@ Useful for having a 'harmonic distribution' of a song."
                                  10 :Bb,
                                  11 :B})
 
-  
-(defn image-distribution
-  "Transforms a distribution (a map with numeric values) into the image distribution by the specified transform of the keys."
-  [transform initial-distibution]
-  (reduce (fn [distribution key]
-            (let [image (transform key)
-                  old-value (or (distribution image) 0)]
-              (assoc distribution image (+ old-value (initial-distibution key)))))
-          {}
-          (keys initial-distibution)))
-                 
 (def to-scale-notes-distribution 
   "Transforms a Pitch Distribution into a Scale Notes Distribution, by conserving total measure."
   (partial image-distribution scale-note-of-pitch))
@@ -189,74 +177,14 @@ Useful for having a 'harmonic distribution' of a song."
 
 (defn to-height-zone-distibution
   [pitch-time-distrib]
-  (image-distribution height-zone pitch-time-distrib))
+  (image-distribution height-zone pitch-time-distrib))                    
 
-(defrecord WeightedPoint [point weight])
-
-(let [counter-fun (fn [item] (->WeightedPoint item 1))]
-  (defn aggregate-into-distribution
-    ([adder-fun coll]
-    "Computes a bag representation of the coll, that is a map mapping each item in the coll to the number of times it appears in the coll.
-The optional adder-fun argument is a function that takes a collection item and extracts from it a :point and a :weight, and returns them in a map, for example as a WeightedPoint."
-    (reduce (fn [bag item]
-              (let [{point :point
-                     weight :weight} (adder-fun item)]
-                (assoc bag point (+ weight (or (bag point) 0)))))
-            {}
-            coll))
-    ([coll] (aggregate-into-distribution counter-fun coll))))
-
-(defn distributions-binary-operator
-  ([per-value-operator default-value-1 default-value-2]
-    (fn dbo
-      ([] {})
-      ([d] d)
-      ([d1 d2]
-        (reduce (fn [distrib point]
-                  (let [op-value (per-value-operator (or (d1 point) default-value-1) (or (d2 point) default-value-2))]
-                    (if (= op-value 0)
-                      distrib
-                      (assoc distrib point op-value))))
-                {}
-                (clojure.set/union (keys d1) (keys d2))))
-      ([d1 d2 & rest]
-        (reduce dbo (dbo d1 d2) rest))))
-  ([per-value-operator default-value]
-    (distributions-binary-operator per-value-operator default-value default-value))
-  ([per-value-operator] (distributions-binary-operator per-value-operator 0 0)))
-
-(def +distributions (distributions-binary-operator + 0))
-(def -distributions (distributions-binary-operator - 0))
-(def *distributions (distributions-binary-operator * 0))
-(defn dotp-distributions
-  [distrib-1 distrib-2]
-  (sum (vals *distributions distrib-1 distrib-2)))
-(defn norm2-distributions
-  [distrib]
-  (dotp-distributions distrib distrib))
-(defn distance-euclidean-distributions
-  [distrib-1 distrib-2]
-  (let [difference (-distributions distrib-1 distrib-2)]
-    (math/sqrt (norm2-distributions difference))))
-  
-(defn maximal-point-info
-  "Returns a map associated the highest value of the distribution to :value, and the first point to achive this value as :point"
-  [distribution]
-  (let [ks (keys distribution)]
-    (if (empty? ks)
-      {:value 0}
-      (let [[first-point & others] ks]
-        (reduce (fn [{best-value :value :as last-info} point]
-                  (let [new-value (distribution point)]
-                    (if (> new-value best-value)
-                      {:point point
-                       :value new-value}
-                      last-info)))
-                {:point first-point
-                 :value (distribution first-point)}
-                others)))))
-                
-                    
+(defn extract-distributions-per-track-and-merge
+  [extract-from-track-notes]
+  (fn [^NiceSong song]
+    (let [notes-of-tracks-seq (map :notes (:content song))]
+      (reduce +distributions
+              (map extract-from-track-notes notes-of-tracks-seq)))))
 
 (defn extract-rythm-steps-distribution
   "Extracts from a song the distribution of steps, that is the duration between successive notes.
