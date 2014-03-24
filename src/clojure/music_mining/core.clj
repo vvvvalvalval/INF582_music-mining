@@ -1,13 +1,13 @@
 (ns music-mining.core
   (:require [music-mining.data-imports :as di]
-            [clojure.contrib.math :as math])
+            [clojure.contrib.math :as math]
+            clojure.set)
   (:import [music_mining.data_imports NiceSong NotesGroup])
   (:use [clojure.repl]
         [clojure.pprint]
         [music-mining.utils]
         [music-mining.data-imports :only [chello rhapsody smoke-water au-clair-de-la-lune several-instruments
-                                          reference-pitch-value]])
-  )
+                                          reference-pitch-value]]))
 
 (def fetch-songs di/fetch-a-few-songs)
 (def fetch-all-songs di/fetch-all-songs)
@@ -137,12 +137,6 @@ Useful for having a 'harmonic distribution' of a song."
             0
             (keys snd1)))
 
-(defn euclidean-SND
-  "Natural Euclidean Distance for Scale Note Ditributions"
-  [snd1 snd2]
-  (let [difference (-SND snd1 snd2)]
-    (math/sqrt (dot-product-SND difference difference))))
-
 (defn +SND
   [snd1 snd2]
   (reduce (fn [res pitch]
@@ -161,6 +155,12 @@ Useful for having a 'harmonic distribution' of a song."
   [coeff snd]
   (transform-map #(* coeff %) snd))
 
+(defn euclidean-SND
+  "Natural Euclidean Distance for Scale Note Ditributions"
+  [snd1 snd2]
+  (let [difference (-SND snd1 snd2)]
+    (math/sqrt (dot-product-SND difference difference))))
+
 
 (defn match-SNDs
   ""
@@ -172,12 +172,12 @@ Useful for having a 'harmonic distribution' of a song."
       (if (= 12 shift)
         {:match best-match
          :shift best-shift}
-        (let [new-match (distance2-SND snd1 (shift-SND snd2 shift))
+        (let [new-match (distance snd1 (shift-SND snd2 shift))
               beaten (< new-match best-match)]
           (recur (if beaten new-match best-match)
                  (if beaten shift best-shift)
                  (inc shift)))))))
-  ([snd1 snd2] (match-SNDs snd1 snd2 distance2-SND)))
+  ([snd1 snd2] (match-SNDs snd1 snd2 euclidean-SND)))
 
 
 (defn height-zone [pitch]
@@ -189,27 +189,55 @@ Useful for having a 'harmonic distribution' of a song."
 
 (defn to-height-zone-distibution
   [pitch-time-distrib]
-  (image-distribution height-zone pitch-duration-distrib))
+  (image-distribution height-zone pitch-time-distrib))
 
-(defn count-to-bag
-  [coll]
-  "Computes a bag representation of the coll, that is a map mapping each item in the coll to the number of times it appears in the coll."
-  (reduce (fn [bag item]
-            (assoc bag item (inc (or (bag item) 0))))
-          {}
-          coll))
+(defrecord WeightedPoint [point weight])
 
-(defn +distributions
-  "Sums the specified distributions"
-  ([] {})
-  ([d] d)
-  ([d1 d2]
-    (reduce (fn [distrib point1]
-              (assoc distrib point1 (+ (d1 point1) (or (distrib point1) 0))))
-            d2
-            (keys d1)))
-  ([d1 d2 & rest]
-    (reduce +distributions (+distributions d1 d2) rest)))
+(let [counter-fun (fn [item] (->WeightedPoint item 1))]
+  (defn aggregate-into-distribution
+    ([adder-fun coll]
+    "Computes a bag representation of the coll, that is a map mapping each item in the coll to the number of times it appears in the coll.
+The optional adder-fun argument is a function that takes a collection item and extracts from it a :point and a :weight, and returns them in a map, for example as a WeightedPoint."
+    (reduce (fn [bag item]
+              (let [{point :point
+                     weight :weight} (adder-fun item)]
+                (assoc bag point (+ weight (or (bag point) 0)))))
+            {}
+            coll))
+    ([coll] (aggregate-into-distribution counter-fun coll))))
+
+(defn distributions-binary-operator
+  ([per-value-operator default-value-1 default-value-2]
+    (fn dbo
+      ([] {})
+      ([d] d)
+      ([d1 d2]
+        (reduce (fn [distrib point]
+                  (let [op-value (per-value-operator (or (d1 point) default-value-1) (or (d2 point) default-value-2))]
+                    (if (= op-value 0)
+                      distrib
+                      (assoc distrib point op-value))))
+                {}
+                (clojure.set/union (keys d1) (keys d2))))
+      ([d1 d2 & rest]
+        (reduce dbo (dbo d1 d2) rest))))
+  ([per-value-operator default-value]
+    (distributions-binary-operator per-value-operator default-value default-value))
+  ([per-value-operator] (distributions-binary-operator per-value-operator 0 0)))
+
+(def +distributions (distributions-binary-operator + 0))
+(def -distributions (distributions-binary-operator - 0))
+(def *distributions (distributions-binary-operator * 0))
+(defn dotp-distributions
+  [distrib-1 distrib-2]
+  (sum (vals *distributions distrib-1 distrib-2)))
+(defn norm2-distributions
+  [distrib]
+  (dotp-distributions distrib distrib))
+(defn distance-euclidean-distributions
+  [distrib-1 distrib-2]
+  (let [difference (-distributions distrib-1 distrib-2)]
+    (math/sqrt (norm2-distributions difference))))
   
 (defn maximal-point-info
   "Returns a map associated the highest value of the distribution to :value, and the first point to achive this value as :point"
@@ -235,15 +263,20 @@ Useful for having a 'harmonic distribution' of a song."
 Returns a normalized distribution so the most frequent step has duration 1."
   [^NiceSong song]
   (let [to-steps-seq (fn self [notesGroups-seq]
-                       (let [first-2-ng (take 2 notesGroups-seq)]
-                         (if (< (count first-2-ng) 2)
+                       (let [[{pos1 :position} {pos2 :position} & _] notesGroups-seq]
+                         (if (nil? pos2)
                            ()
-                           (let [[{pos1 :position} {pos2 :position} & _] first-2-ng]
-                             (lazy-seq
-                               (cons (- pos2 pos1) (self (rest notesGroups-seq))))))))
+                           (lazy-seq
+                             (cons (- pos2 pos1) (self (rest notesGroups-seq)))))))
         notes-of-tracks-seq (map :notes (:content song))
         unnormalized-distrib (reduce +distributions
-                                     (map (comp count-to-bag to-steps-seq) notes-of-tracks-seq))]
+                                     (map (comp aggregate-into-distribution to-steps-seq) notes-of-tracks-seq))
+        {most-frequent-step :point} (maximal-point-info unnormalized-distrib)]
+    (if (nil? most-frequent-step)
+      {} ;there is no step!
+      (image-distribution #(/ % most-frequent-step) ;normalizing 
+                          unnormalized-distrib))))
+      
     
     
         
@@ -261,4 +294,4 @@ Returns a normalized distribution so the most frequent step has duration 1."
   
   
   
-  
+    
